@@ -1,6 +1,6 @@
 /**************************************************************************
  *                                                                        *
- *        Linux debug tool for the Cypress EZ-OTG / EZ-Host.              *
+ *        Linux firmware tool for the Cypress EZ-OTG / EZ-Host.           *
  *        The chip found, among other places, on the Xilinx ML501.        *
  *                                                                        *
  **************************************************************************

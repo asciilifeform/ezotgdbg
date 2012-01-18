@@ -31,6 +31,7 @@
 #define PRODUCT_ID   0x7200
 
 /* TODO: destupidate */
+#define PAGESIZE     4096
 #define BUFSIZE      32767
 #define TIMEOUT      50000
 
@@ -45,7 +46,7 @@ struct usb_device *current_device;
 usb_dev_handle *devh;
 char buf[BUFSIZE];
 char *filename = NULL;
-int offset = 0, bytecount = 0;
+int offset = 0, bytecount = 0, pagecount = 0, lastpage = 0;
 
 
 void print_usage(int argc, char *argv[]) {
@@ -63,38 +64,38 @@ void print_usage(int argc, char *argv[]) {
 }
 
 
-void save_buf(char *buf, int length, char *filename) {
+void save_buf(char *buffer, int length, char *file_name) {
   FILE *f;
-  f = fopen(filename, "w");
+  f = fopen(file_name, "w");
   if (f == NULL) {
     fprintf(stderr, "Cannot open file \"%s\" for writing.\n", filename);
     exit(1);
   }
-  if (fwrite(buf, 1, length, f) != length) {
+  if (fwrite(buffer, 1, length, f) != length) {
     fprintf(stderr, "Error writing buffer!\n");
   }
   fclose(f);
 }
 
 
-int load_buf(char *buf, char *filename) {
+int load_buffer(char *buffer, char *file_name) {
   FILE *f;
   int fsize, result;
-  if (filename == NULL) {
-    printf("Must specify filename!\n");
+  if (file_name == NULL) {
+    printf("Must specify file_name!\n");
     error(1);
   }
-  f = fopen(filename, "r");
+  f = fopen(file_name, "r");
   if (f == NULL) {
-    fprintf(stderr, "Cannot open file \"%s\" for reading.\n", filename);
+    fprintf(stderr, "Cannot open file \"%s\" for reading.\n", file_name);
     exit(1);
   } else {
     fseek(f, 0, SEEK_END);
     fsize = ftell(f);
     rewind(f);
-    result = fread(buf, 1, fsize, f);
+    result = fread(buffer, 1, fsize, f);
     if (result != fsize) {
-      fprintf(stderr, "Error reading file \"%s\".\n", filename);
+      fprintf(stderr, "Error reading file \"%s\".\n", file_name);
       exit(1);
     }
     fclose(f);
@@ -148,17 +149,28 @@ void usb_disconnect() {
 }
 
 
-void read_eeprom() {
-  usb_connect();
-  printf("Reading %d bytes from offset %x (%d)...\n", bytecount, offset, offset);
-  res = usb_control_msg(devh, USB_ENDPOINT_IN | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
- 			CY_REQUEST_CODE, CY_READ_EEPROM, offset, buf, bytecount, TIMEOUT);
-  if (res != bytecount) {
-    printf("Error reading EEPROM: %d bytes read out of %d total.", res, bytecount);
-  } else {
-    save_buf(buf, bytecount, filename);
-    printf("%d bytes read OK, saved to '%s'.\n", bytecount, filename);
+void read_page(int loc, char *buffer, int length) {
+  int read_res;
+  read_res = usb_control_msg(devh, USB_ENDPOINT_IN | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
+			     CY_REQUEST_CODE, CY_READ_EEPROM, loc, buffer, length, TIMEOUT);
+  if (read_res != length) {
+    printf("Error reading EEPROM: %d bytes read out of %d page total.", res, length);
+    usb_disconnect();
+    exit(1);
   }
+}
+
+
+void read_eeprom() {
+  int i;
+  usb_connect();
+  printf("Reading %d bytes (<= %d pages) from offset %x (%d)...\n", bytecount, pagecount, offset, offset);
+  for (i = 0; i < pagecount; i++) {
+    read_page(offset + (i * PAGESIZE), buf + (i * PAGESIZE), PAGESIZE);
+  }
+  if (lastpage > 0) read_page(offset + (pagecount * PAGESIZE), buf + (pagecount * PAGESIZE), lastpage);
+  save_buf(buf, bytecount, filename);
+  printf("%d bytes read OK, saved to '%s'.\n", bytecount, filename);
   usb_disconnect();
 }
 
@@ -168,27 +180,29 @@ int main(int argc, char *argv[]) {
   char c;
   while ((c = getopt(argc, argv, "o:n:r:w:h|help")) != -1) {
     switch(c) {
-      case 'o':
-        offset = atoi(optarg); /* TODO: hex offset */
-	break;
-      case 'n':
-        bytecount = atoi(optarg);
-	break;
-      case 'r': /* TODO: read >4KB at a time... */
-        filename = optarg;
-        read_eeprom();
-        exit(0);
-        break;
-      case 'w':
-        filename = optarg;
-        printf("Not implemented yet!\n");
-        exit(1);
-	break;
-      case 'h':
-      default:
-	print_usage(argc, argv);
-	exit(0);
-	break;
+    case 'o':
+      offset = atoi(optarg); /* TODO: hex offset */
+      break;
+    case 'n':
+      bytecount = atoi(optarg);
+      pagecount = bytecount / PAGESIZE;
+      lastpage = bytecount % PAGESIZE;
+      break;
+    case 'r':
+      filename = optarg;
+      read_eeprom();
+      exit(0);
+      break;
+    case 'w':
+      filename = optarg;
+      printf("Not implemented yet!\n");
+      exit(1);
+      break;
+    case 'h':
+    default:
+      print_usage(argc, argv);
+      exit(0);
+      break;
     }
   }
   print_usage(argc, argv);

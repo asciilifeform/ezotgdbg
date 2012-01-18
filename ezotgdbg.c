@@ -32,7 +32,7 @@
 
 /* TODO: destupidate */
 #define PAGESIZE     4096
-#define BUFSIZE      32767
+#define BUFSIZE      99999
 #define TIMEOUT      50000
 
 /* ... you will not ask about the Secret Ingredient! */
@@ -154,7 +154,7 @@ void read_page(int loc, char *buffer, int length) {
   read_res = usb_control_msg(devh, USB_ENDPOINT_IN | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
 			     CY_REQUEST_CODE, CY_READ_EEPROM, loc, buffer, length, TIMEOUT);
   if (read_res != length) {
-    printf("Error reading EEPROM: %d bytes read out of %d page total.", res, length);
+    printf("Error reading EEPROM: %d bytes read out of %d page total.", read_res, length);
     usb_disconnect();
     exit(1);
   }

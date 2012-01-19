@@ -27,21 +27,110 @@
 #include <usb.h>
 
 /* Only the CY7C67300 for now, because that is what we have. */
-#define VENDOR_ID    0x04B4
-#define PRODUCT_ID   0x7200
+#define VENDOR_ID              0x04B4
+#define PRODUCT_ID             0x7200
 
 /* TODO: destupidate */
-#define PAGESIZE     4096
-#define BUFSIZE      99999
-#define TIMEOUT      50000
+#define PAGESIZE                 4096
+#define BUFSIZE                 99999
+#define TIMEOUT                 50000
 
 /* ... you will not ask about the Secret Ingredient! */
-#define CY_REQUEST_CODE   0xFF
-#define CY_READ_EEPROM    0x0007
-#define CY_WRITE_EEPROM   0x0000
+#define CY_REQUEST_CODE          0xFF
+#define CY_READ_EEPROM         0x0007
+#define CY_SHORT_WRITE_EEPROM  0x0008
+#define CY_LONG_WRITE_EEPROM   0x0000
+
+#define CY_SCAN_SIGNATURE      0xC3B6
+#define CY_OPCODE_COPY              0
+#define CY_OPCODE_JUMP              4
+#define CY_OPCODE_CALL              5
 
 
-int res;
+/* TODO: find out if this is EXACTLY the same for ALL long writes! */
+
+#define CY_LONG_SCAN_BOOTSTRAP_LENGTH  144
+unsigned char long_scan_bootstrap[] =
+  {0xb6, 0xc3, 0x04, 0x00, 0x00, /* op=0: copy 4 bytes to 0x0000: 42 00 4c 03 */
+   0x42, 0x00, 0x4c, 0x03,
+   /* op=0: copy 114 bytes to 0x1000 */
+   0xb6, 0xc3, 0x72, 0x00, 0x00,
+   /* Begin 114 bytes */
+   0x10, 0x03,
+   0x00, 0x90, 0xc9, 0x07, 0x10, 0x02, 0xd1, 0x07, 0x42, 0x00, 0x31, 0x00, 0x0c, 0x00, 0x9f, 0xaf,
+   0x2e, 0x03, 0xc9, 0x07, 0x90, 0x02, 0xd1, 0x07, 0x42, 0x00, 0x31, 0x00, 0x0c, 0x00, 0xf1, 0x07,
+   0x56, 0x04, 0x02, 0x00, 0xf1, 0x07, 0x40, 0x00, 0x04, 0x00, 0xd1, 0x97, 0x41, 0x00, 0x97, 0xcf,
+   0x4d, 0xaf, 0xc9, 0x07, 0x90, 0x02, 0xca, 0x07, 0xb0, 0xc0, 0x05, 0xcf, 0x4d, 0xaf, 0xc9, 0x07,
+   0x10, 0x02, 0xca, 0x07, 0x90, 0xc0, 0xd2, 0x07, 0x02, 0x00, 0xc6, 0x07, 0x40, 0x00, 0xc8, 0x07,
+   0x56, 0x04, 0x02, 0x0a, 0x41, 0x0c, 0x0c, 0x00, 0xc0, 0x07, 0x01, 0x00, 0x41, 0xaf, 0x31, 0xd8,
+   0x0c, 0x00, 0x06, 0xda, 0x76, 0xc1, 0x9f, 0xaf, 0x2e, 0x03, 0x4e, 0xaf, 0xc0, 0xdf, 0x97, 0xcf,
+   /* end of 114 bytes */
+   0xb6, 0xc3, 0x04, 0x00, 0x00, 0x52, 0x00, 0x40, 0x03,
+   0xb6, 0xc3, 0x02, 0x00, 0x05, 0x10, 0x03};
+
+
+/*
+send eeprom.bin:
+----------------
+SetupPacket:
+0000: 00 ff 08 00 f0 d5 00 00 
+bmRequestType: 00
+  DIR: Host-To-Device
+  TYPE: Standard
+  RECIPIENT: Device
+bRequest: ff  
+  unknown!
+
+
+TransferBuffer: 0x0000003e (62) length
+----
+b6 c3 37 00 08 41 00 (op=8: move 55 bytes to address 0x0041)
+----
+payload:
+00 b6 c3 24 00 00 c8 3f c0 09 3a c0 c0 87 07 00 27 00
+3a c0 9f af c6 e7 c2 07 02 00 c0 07 00 00 71 af cf 07
+00 04 c0 df 47 af b6 c3 02 00 04 c8 3f 00 00 00 00 00
+00
+----
+ */
+
+
+
+/*
+send eeprom_scan.bin:
+----------------
+
+SetupPacket:
+0000: 00 ff 08 00 f0 d5 00 00 
+bmRequestType: 00
+  DIR: Host-To-Device
+  TYPE: Standard
+  RECIPIENT: Device
+bRequest: ff  
+  unknown!
+
+
+TransferBuffer: 0x00000069 (105) length
+----
+b6 c3 62 00 08 41 00 00
+----------------------------------------
+payload:
+b6 c3 04 00 00 00 e0 00 
+00
+b6 c3 0a 00 00 01 3f e7 07 b3 23 3a c0 97 cf 
+b6 c3 02 00 05 01 3f
+b6 c3 30 00 00 01 3f
+b6 c3 20 00 00 08 3f
+c0 09 3a c0 c0 87 07 00 27 00 3a
+c0 c2 07 02 00 c0 07 00 00 71 af cf 07 00 04 c0 
+df 47 af
+b6 c3 02 00 04 08 3f 00 00
+b6 c3 02 00 05 01 3f 00 00 00 00 00 00
+----------------------------------------
+ */
+
+
+
 struct usb_device *current_device;
 usb_dev_handle *devh;
 char buf[BUFSIZE];
@@ -105,6 +194,7 @@ int load_buffer(char *buffer, char *file_name) {
 
 /* TODO: specify bus and device ID if more than one EZ-OTG were to hang off the bus. */
 void usb_connect() {
+  int conn_res;
   struct usb_bus *p;
   struct usb_device *q;
   usb_init();
@@ -129,13 +219,13 @@ void usb_connect() {
   }
   printf("Found EZ-OTG chip.\n");
   devh = usb_open(current_device);
-  res = usb_claim_interface(devh, 0);
-  if (res < 0) {
+  conn_res = usb_claim_interface(devh, 0);
+  if (conn_res < 0) {
     printf("Error claiming interface!\n");
     exit(1);
   }
-  res = usb_get_string_simple(devh, 1, buf, BUFSIZE);
-  if (res < 0) {
+  conn_res = usb_get_string_simple(devh, 1, buf, BUFSIZE);
+  if (conn_res < 0) {
     printf("Error reading manufacturer ID!\n");
     exit(1);
   }
@@ -172,6 +262,18 @@ void read_eeprom() {
   save_buf(buf, bytecount, filename);
   printf("%d bytes read OK, saved to '%s'.\n", bytecount, filename);
   usb_disconnect();
+}
+
+
+void send_scan_sig() {
+  /* 0xb6, 0xc3, 0x02, 0x00, 0x05, 0x10, 0x03
+                 \......../  \../  \......../
+		 length = 2  typ 5 jmp addr = 0x0310 (784)
+		          \...................\..../
+			                      2 bytes
+  */
+  
+
 }
 
 

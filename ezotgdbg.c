@@ -30,11 +30,10 @@
 #define VENDOR_ID                 0x04B4
 #define PRODUCT_ID                0x7200
 
-/* TODO: destupidate */
 #define PAGESIZE                    4096
 #define MAX_ROM_SIZE               65536
-#define BUFSIZE                    99999
-#define TIMEOUT                    50000
+#define BUFSIZE                    99999  /* TODO: destupidate */
+#define TIMEOUT                    50000  /* Please, stay awhile... stay Forever! */
 
 /*****************************************************************************/
 /* ... you should not ask about the Secret Ingredient! */
@@ -44,16 +43,10 @@
 #define CY_LONG_WRITE_EEPROM      0x0000
 #define CY_LONG_WRITE_ENDPOINT         1
 #define CY_BOOTSTRAPPER_OFFSET    0x0001
-
-/*
-#define CY_SCAN_SIGNATURE         0xC3B6
-#define CY_OPCODE_COPY                 0
-#define CY_OPCODE_JUMP                 4
-#define CY_OPCODE_CALL                 5
-*/
+#define CY_SHORT_WRITE_OFFSET     0xD5F0
 
 #define CY_LONG_SCAN_BOOTSTRAP_LENGTH  144
-char long_scan_bootstrap[CY_LONG_SCAN_BOOTSTRAP_LENGTH] =
+unsigned char long_scan_bootstrap[CY_LONG_SCAN_BOOTSTRAP_LENGTH] =
   {0xb6, 0xc3, 0x04, 0x00, 0x00, 0x42, 0x00, /* op=0: copy 4-2 bytes to 0x0042: 4c 03 */
    0x4c, 0x03,
    /* op=0: copy 114-2 bytes to 0x0310 */
@@ -128,6 +121,7 @@ void print_usage(int argc, char *argv[]) {
   printf("  Options:\n");
   printf("      -r\tRead bytes from RAM and save to FILE.\n");
   printf("      -w\tWrite contents of FILE to EEPROM via I2C.\n");
+  printf("      -m\tWrite contents of (small) FILE to EEPROM.\n");
   printf("      -o\tOffset in RAM to read from.\n");
   printf("      -n\tNumber of bytes (to read.)\n");
   printf("      -h\tShow this help screen.\n");
@@ -299,11 +293,50 @@ void write_eeprom_long() {
 }
 
 
+void write_eeprom_short() {
+  int size, write_res;
+  size = load_buffer(buf + 8, filename); /* Reserve space for SCAN header. */
+  /* pad payload by another 2 bytes (4 total, based on observations) */
+  buf[size + 1] = 0x00;
+  buf[size + 2] = 0x00;
+  size += 2;
+  /* SCAN header signature */
+  buf[0] = 0xB6;
+  buf[1] = 0xC3;
+  /* Payload size */
+  buf[2] = 0xFF & (size + 1);
+  buf[3] = (0xFF00 & (size + 1)) >> 8;
+  /* operation: move with interrupt */
+  buf[4] = 0x08;
+  /* int=0x41 */
+  buf[5] = 0x41;
+  /* Destination */
+  buf[6] = 0x00;
+  buf[7] = 0x00;
+  /* Adjust byte count to fit SCAN header. */
+  size += 8;
+  /* Send payload. */
+  usb_connect();
+  write_res = usb_control_msg(devh, USB_ENDPOINT_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
+			      CY_REQUEST_CODE, CY_SHORT_WRITE_EEPROM, CY_SHORT_WRITE_OFFSET,
+			      buf, size, TIMEOUT);
+
+  if (write_res != size) {
+    printf("Error writing EEPROM using SHORT write: %d bytes sent out of %d bytes attempted.\n",
+	   write_res, size);
+    usb_disconnect();
+    exit(1);
+  }
+  printf("%d bytes wrote to I2C using SHORT write from '%s'.\n", size, filename);
+  usb_disconnect();
+}
+
+
 /* TODO: implement writing. */
 int main(int argc, char *argv[]) {
   int ok;
   char c;
-  while ((c = getopt(argc, argv, "o:n:r:w:h|help")) != -1) {
+  while ((c = getopt(argc, argv, "o:n:r:w:m:h|help")) != -1) {
     switch(c) {
     case 'o':
       /* offset = atoi(optarg); */
@@ -330,6 +363,11 @@ int main(int argc, char *argv[]) {
     case 'w':
       filename = optarg;
       write_eeprom_long();
+      exit(0);
+      break;
+    case 'm':
+      filename = optarg;
+      write_eeprom_short();
       exit(0);
       break;
     case 'h':

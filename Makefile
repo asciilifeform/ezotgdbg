@@ -10,4 +10,4 @@ clean :
 	rm -f nul core *.o $(BIN) *~
 
 check-syntax:
-	$(CC) -o nul -Wall -Wextra -pedantic -S $(CHK_SOURCES)
+	$(CC) -o nul -Wall -S $(CHK_SOURCES)

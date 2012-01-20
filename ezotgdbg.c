@@ -73,7 +73,7 @@ char long_scan_bootstrap[CY_LONG_SCAN_BOOTSTRAP_LENGTH] =
 /*****************************************************************************/
 
 /*
-  Long Send Payload:
+  Long Send Payload (more or less):
 
   00 90       	xor r0,r0
   c9 07 10 02 	mov r9,0x210
@@ -113,74 +113,11 @@ char long_scan_bootstrap[CY_LONG_SCAN_BOOTSTRAP_LENGTH] =
 */
 
 
-
-/*
-  send eeprom.bin:
-  ----------------
-  SetupPacket:
-  0000: 00 ff 08 00 f0 d5 00 00 
-  bmRequestType: 00
-  DIR: Host-To-Device
-  TYPE: Standard
-  RECIPIENT: Device
-  bRequest: ff  
-  unknown!
-
-
-  TransferBuffer: 0x0000003e (62) length
-  ----
-  b6 c3 37 00 08 41 00 00 (op=8: using vector 0x41, move 55-? bytes to address 0x0000)
-  ----
-  payload:
-  b6 c3 24 00 00 c8 3f c0 09 3a c0 c0 87 07 00 27 00 3a
-  c0 9f af c6 e7 c2 07 02 00 c0 07 00 00 71 af cf 07 00
-  04 c0 df 47 af b6 c3 02 00 04 c8 3f 00 00
-  00 00 00 00 (padding?)
-  ----
-*/
-
-
-
-/*
-  send eeprom_scan.bin:
-  ----------------
-
-  SetupPacket:
-  0000: 00 ff 08 00 f0 d5 00 00 
-  bmRequestType: 00
-  DIR: Host-To-Device
-  TYPE: Standard
-  RECIPIENT: Device
-  bRequest: ff  
-  unknown!
-
-
-  TransferBuffer: 0x00000069 (105) length
-  ----
-  b6 c3 62 00 08 41 00 00 (op=8: using vector 0x41, move 98-? bytes to address 0x0000)
-  ----------------------------------------
-  payload:
-  b6 c3 04 00 00 00 e0 00 
-  00
-  b6 c3 0a 00 00 01 3f e7 07 b3 23 3a c0 97 cf 
-  b6 c3 02 00 05 01 3f
-  b6 c3 30 00 00 01 3f
-  b6 c3 20 00 00 08 3f
-  c0 09 3a c0 c0 87 07 00 27 00 3a
-  c0 c2 07 02 00 c0 07 00 00 71 af cf 07 00 04 c0 
-  df 47 af
-  b6 c3 02 00 04 08 3f 00 00
-  b6 c3 02 00 05 01 3f 00 00 00 00 00 00
-  ----------------------------------------
-*/
-
-
-
 struct usb_device *current_device;
 usb_dev_handle *devh;
 char buf[BUFSIZE];
 char *filename = NULL;
-int offset = 0, bytecount = 0, pagecount = 0, lastpage = 0;
+unsigned int offset = 0, bytecount = 0, pagecount = 0, lastpage = 0;
 
 
 void print_usage(int argc, char *argv[]) {
@@ -364,11 +301,17 @@ void write_eeprom_long() {
 
 /* TODO: implement writing. */
 int main(int argc, char *argv[]) {
+  int ok;
   char c;
   while ((c = getopt(argc, argv, "o:n:r:w:h|help")) != -1) {
     switch(c) {
     case 'o':
-      offset = atoi(optarg); /* TODO: hex offset */
+      /* offset = atoi(optarg); */
+      ok = sscanf(optarg, "%x", &offset);
+      if (ok != 1) {
+	fprintf(stderr, "Offset '%s' is not a valid hex value!\n", optarg);
+	exit(1);
+      }
       break;
     case 'n':
       bytecount = atoi(optarg);

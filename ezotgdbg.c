@@ -27,35 +27,38 @@
 #include <usb.h>
 
 /* Only the CY7C67300 for now, because that is what we have. */
-#define VENDOR_ID              0x04B4
-#define PRODUCT_ID             0x7200
+#define VENDOR_ID                 0x04B4
+#define PRODUCT_ID                0x7200
 
 /* TODO: destupidate */
-#define PAGESIZE                 4096
-#define BUFSIZE                 99999
-#define TIMEOUT                 50000
+#define PAGESIZE                    4096
+#define MAX_ROM_SIZE               65536
+#define BUFSIZE                    99999
+#define TIMEOUT                    50000
 
-/* ... you will not ask about the Secret Ingredient! */
-#define CY_REQUEST_CODE          0xFF
-#define CY_READ_EEPROM         0x0007
-#define CY_SHORT_WRITE_EEPROM  0x0008
-#define CY_LONG_WRITE_EEPROM   0x0000
+/*****************************************************************************/
+/* ... you should not ask about the Secret Ingredient! */
+#define CY_REQUEST_CODE             0xFF
+#define CY_READ_MEM               0x0007
+#define CY_SHORT_WRITE_EEPROM     0x0008
+#define CY_LONG_WRITE_EEPROM      0x0000
+#define CY_LONG_WRITE_ENDPOINT         1
+#define CY_BOOTSTRAPPER_OFFSET    0x0001
 
-#define CY_SCAN_SIGNATURE      0xC3B6
-#define CY_OPCODE_COPY              0
-#define CY_OPCODE_JUMP              4
-#define CY_OPCODE_CALL              5
-
-
-/* TODO: find out if this is EXACTLY the same for ALL long writes! */
+/*
+#define CY_SCAN_SIGNATURE         0xC3B6
+#define CY_OPCODE_COPY                 0
+#define CY_OPCODE_JUMP                 4
+#define CY_OPCODE_CALL                 5
+*/
 
 #define CY_LONG_SCAN_BOOTSTRAP_LENGTH  144
-unsigned char long_scan_bootstrap[CY_LONG_SCAN_BOOTSTRAP_LENGTH] =
+char long_scan_bootstrap[CY_LONG_SCAN_BOOTSTRAP_LENGTH] =
   {0xb6, 0xc3, 0x04, 0x00, 0x00, 0x42, 0x00, /* op=0: copy 4-2 bytes to 0x0042: 4c 03 */
    0x4c, 0x03,
-   /* op=0: copy 112 bytes to 0x0310 */
+   /* op=0: copy 114-2 bytes to 0x0310 */
    0xb6, 0xc3, 0x72, 0x00, 0x00, 0x10, 0x03,
-   /* Begin 112 bytes */
+   /* Begin payload: 112 bytes */
    0x00, 0x90, 0xc9, 0x07, 0x10, 0x02, 0xd1, 0x07, 0x42, 0x00, 0x31, 0x00, 0x0c, 0x00, 0x9f, 0xaf,
    0x2e, 0x03, 0xc9, 0x07, 0x90, 0x02, 0xd1, 0x07, 0x42, 0x00, 0x31, 0x00, 0x0c, 0x00, 0xf1, 0x07,
    0x56, 0x04, 0x02, 0x00, 0xf1, 0x07, 0x40, 0x00, 0x04, 0x00, 0xd1, 0x97, 0x41, 0x00, 0x97, 0xcf,
@@ -63,70 +66,113 @@ unsigned char long_scan_bootstrap[CY_LONG_SCAN_BOOTSTRAP_LENGTH] =
    0x10, 0x02, 0xca, 0x07, 0x90, 0xc0, 0xd2, 0x07, 0x02, 0x00, 0xc6, 0x07, 0x40, 0x00, 0xc8, 0x07,
    0x56, 0x04, 0x02, 0x0a, 0x41, 0x0c, 0x0c, 0x00, 0xc0, 0x07, 0x01, 0x00, 0x41, 0xaf, 0x31, 0xd8,
    0x0c, 0x00, 0x06, 0xda, 0x76, 0xc1, 0x9f, 0xaf, 0x2e, 0x03, 0x4e, 0xaf, 0xc0, 0xdf, 0x97, 0xcf,
-   /* end of 112 bytes */
-   0xb6, 0xc3, 0x04, 0x00, 0x00, 0x52, 0x00, 0x40, 0x03, /* op=0: copy 4-2 bytes to 0x0052: 40 03 */
+   /* end of payload */
+   0xb6, 0xc3, 0x04, 0x00, 0x00, 0x52, 0x00, /* op=0: copy 4-2 bytes to 0x0052: 40 03 */
+   0x40, 0x03,
    0xb6, 0xc3, 0x02, 0x00, 0x05, 0x10, 0x03}; /* op=5: call address 0x0310 */
+/*****************************************************************************/
+
+/*
+  Long Send Payload:
+
+  00 90       	xor r0,r0
+  c9 07 10 02 	mov r9,0x210
+  d1 07 42 00 	mov w[r9],0x42
+  31 00 0c 00 	mov w[r9+0xc],r0
+  9f af 2e 03 	call 0x32e
+  c9 07 90 02 	mov r9,0x290
+  d1 07 42 00 	mov w[r9],0x42
+  31 00 0c 00 	mov w[r9+0xc],r0
+  f1 07 56 04 	mov w[r9+0x2],0x456
+  02 00 
+  f1 07 40 00 	mov w[r9+0x4],0x40
+  04 00 
+  d1 97 41 00 	xor w[r9],0x41
+  97 cf       	ret
+  4d af       	int 0x4d
+  c9 07 90 02 	mov r9,0x290
+  ca 07 b0 c0 	mov r10,0xffffc0b0
+  05 cf       	jmps 0x56
+  4d af       	int 0x4d
+  c9 07 10 02 	mov r9,0x210
+  ca 07 90 c0 	mov r10,0xffffc090
+  d2 07 02 00 	mov w[r10],0x2
+  c6 07 40 00 	mov r6,0x40
+  c8 07 56 04 	mov r8,0x456
+  02 0a       	mov r2,b[r8++]
+  41 0c 0c 00 	mov r1,w[r9+0xc]
+  c0 07 01 00 	mov r0,0x1
+  41 af       	int 0x41
+  31 d8 0c 00 	inc w[r9+0xc]
+  06 da       	dec r6
+  76 c1       	jnzs 0x62
+  9f af 2e 03 	call 0x32e
+  4e af       	int 0x4e
+  c0 df       	sti
+  97 cf       	ret
+*/
+
 
 
 /*
-send eeprom.bin:
-----------------
-SetupPacket:
-0000: 00 ff 08 00 f0 d5 00 00 
-bmRequestType: 00
+  send eeprom.bin:
+  ----------------
+  SetupPacket:
+  0000: 00 ff 08 00 f0 d5 00 00 
+  bmRequestType: 00
   DIR: Host-To-Device
   TYPE: Standard
   RECIPIENT: Device
-bRequest: ff  
+  bRequest: ff  
   unknown!
 
 
-TransferBuffer: 0x0000003e (62) length
-----
-b6 c3 37 00 08 41 00 (op=8: move 55 bytes to address 0x0041)
-----
-payload:
-00 b6 c3 24 00 00 c8 3f c0 09 3a c0 c0 87 07 00 27 00
-3a c0 9f af c6 e7 c2 07 02 00 c0 07 00 00 71 af cf 07
-00 04 c0 df 47 af b6 c3 02 00 04 c8 3f 00 00 00 00 00
-00
-----
- */
+  TransferBuffer: 0x0000003e (62) length
+  ----
+  b6 c3 37 00 08 41 00 00 (op=8: using vector 0x41, move 55-? bytes to address 0x0000)
+  ----
+  payload:
+  b6 c3 24 00 00 c8 3f c0 09 3a c0 c0 87 07 00 27 00 3a
+  c0 9f af c6 e7 c2 07 02 00 c0 07 00 00 71 af cf 07 00
+  04 c0 df 47 af b6 c3 02 00 04 c8 3f 00 00
+  00 00 00 00 (padding?)
+  ----
+*/
 
 
 
 /*
-send eeprom_scan.bin:
-----------------
+  send eeprom_scan.bin:
+  ----------------
 
-SetupPacket:
-0000: 00 ff 08 00 f0 d5 00 00 
-bmRequestType: 00
+  SetupPacket:
+  0000: 00 ff 08 00 f0 d5 00 00 
+  bmRequestType: 00
   DIR: Host-To-Device
   TYPE: Standard
   RECIPIENT: Device
-bRequest: ff  
+  bRequest: ff  
   unknown!
 
 
-TransferBuffer: 0x00000069 (105) length
-----
-b6 c3 62 00 08 41 00 00
-----------------------------------------
-payload:
-b6 c3 04 00 00 00 e0 00 
-00
-b6 c3 0a 00 00 01 3f e7 07 b3 23 3a c0 97 cf 
-b6 c3 02 00 05 01 3f
-b6 c3 30 00 00 01 3f
-b6 c3 20 00 00 08 3f
-c0 09 3a c0 c0 87 07 00 27 00 3a
-c0 c2 07 02 00 c0 07 00 00 71 af cf 07 00 04 c0 
-df 47 af
-b6 c3 02 00 04 08 3f 00 00
-b6 c3 02 00 05 01 3f 00 00 00 00 00 00
-----------------------------------------
- */
+  TransferBuffer: 0x00000069 (105) length
+  ----
+  b6 c3 62 00 08 41 00 00 (op=8: using vector 0x41, move 98-? bytes to address 0x0000)
+  ----------------------------------------
+  payload:
+  b6 c3 04 00 00 00 e0 00 
+  00
+  b6 c3 0a 00 00 01 3f e7 07 b3 23 3a c0 97 cf 
+  b6 c3 02 00 05 01 3f
+  b6 c3 30 00 00 01 3f
+  b6 c3 20 00 00 08 3f
+  c0 09 3a c0 c0 87 07 00 27 00 3a
+  c0 c2 07 02 00 c0 07 00 00 71 af cf 07 00 04 c0 
+  df 47 af
+  b6 c3 02 00 04 08 3f 00 00
+  b6 c3 02 00 05 01 3f 00 00 00 00 00 00
+  ----------------------------------------
+*/
 
 
 
@@ -143,10 +189,10 @@ void print_usage(int argc, char *argv[]) {
   printf("http://www.loper-os.org\n\n");
   printf("Usage: %s OPERATION [OPTIONS] -[r|w] FILE\n", argv[0]);
   printf("  Options:\n");
-  printf("      -r\tRead bytes from EEPROM and save to FILE.\n");
-  printf("      -w\tWrite contents of FILE to EEPROM.\n");
-  printf("      -o\tOffset in EEPROM to read or write from.\n");
-  printf("      -n\tNumber of bytes to read or write.\n");
+  printf("      -r\tRead bytes from RAM and save to FILE.\n");
+  printf("      -w\tWrite contents of FILE to EEPROM via I2C.\n");
+  printf("      -o\tOffset in RAM to read from.\n");
+  printf("      -n\tNumber of bytes (to read.)\n");
   printf("      -h\tShow this help screen.\n");
   printf("\n");
 }
@@ -188,12 +234,22 @@ int load_buffer(char *buffer, char *file_name) {
     }
     fclose(f);
   }
+  if (fsize > MAX_ROM_SIZE) {
+    fprintf(stderr, "This ROM image is too big!\n");
+    exit(1);
+  }
+  /* Pad buffer */
+  buffer[fsize + 1] = 0x00;
+  buffer[fsize + 2] = 0x00;
+  fsize += 2;
+  return fsize;
 }
 
 
 /* TODO: specify bus and device ID if more than one EZ-OTG were to hang off the bus. */
 void usb_connect() {
   int conn_res;
+  char id_buf[1024];
   struct usb_bus *p;
   struct usb_device *q;
   usb_init();
@@ -223,12 +279,12 @@ void usb_connect() {
     printf("Error claiming interface!\n");
     exit(1);
   }
-  conn_res = usb_get_string_simple(devh, 1, buf, BUFSIZE);
+  conn_res = usb_get_string_simple(devh, 1, id_buf, BUFSIZE);
   if (conn_res < 0) {
     printf("Error reading manufacturer ID!\n");
     exit(1);
   }
-  printf("Chip Manufacturer ID='%s'\n", buf);
+  printf("Chip Manufacturer ID='%s'\n", id_buf);
 }
 
 
@@ -241,16 +297,17 @@ void usb_disconnect() {
 void read_page(int loc, char *buffer, int length) {
   int read_res;
   read_res = usb_control_msg(devh, USB_ENDPOINT_IN | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
-			     CY_REQUEST_CODE, CY_READ_EEPROM, loc, buffer, length, TIMEOUT);
+			     CY_REQUEST_CODE, CY_READ_MEM, loc, buffer, length, TIMEOUT);
   if (read_res != length) {
-    printf("Error reading EEPROM: %d bytes read out of %d page total.", read_res, length);
+    printf("Error reading EEPROM: %d bytes read out of %d page total.\n", read_res, length);
     usb_disconnect();
     exit(1);
   }
+  printf("Read page: %d bytes.\n", length);
 }
 
 
-void read_eeprom() {
+void read_ram() {
   int i;
   usb_connect();
   printf("Reading %d bytes (<= %d pages) from offset %x (%d)...\n", bytecount, pagecount, offset, offset);
@@ -264,15 +321,44 @@ void read_eeprom() {
 }
 
 
-void send_scan_sig() {
-  /* 0xb6, 0xc3, 0x02, 0x00, 0x05, 0x10, 0x03
-                 \......../  \../  \......../
-		 length = 2  typ 5 call addr = 0x0310 (784)
-		          \...................\..../
-			                      2 bytes
-  */
-  
+void write_page(int loc, char *buffer, int length) {
+  int write_res;
+  printf("Writing page... (DO NOT INTERRUPT!)\n");
+  write_res = usb_bulk_write(devh, CY_LONG_WRITE_ENDPOINT, buffer, length, TIMEOUT);
+  if (write_res != length) {
+    printf("Error sending page for I2C write: %d bytes sent out of %d page total.\n", write_res, length);
+    usb_disconnect();
+    exit(1);
+  }
+  printf("Wrote I2C page: %d bytes.\n", length);
+}
 
+
+void write_eeprom_long() {
+  int i, size, write_res;
+  size = load_buffer(buf, filename);
+  usb_connect();
+  /* Send bootstrapper. */
+  write_res = usb_control_msg(devh, USB_ENDPOINT_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
+			      CY_REQUEST_CODE, CY_LONG_WRITE_EEPROM, CY_BOOTSTRAPPER_OFFSET,
+			      long_scan_bootstrap, CY_LONG_SCAN_BOOTSTRAP_LENGTH, TIMEOUT);
+  if (write_res != CY_LONG_SCAN_BOOTSTRAP_LENGTH) {
+    printf("Error writing I2C write bootstrapper block: %d bytes sent out of %d bytes attempted.\n",
+	   write_res, CY_LONG_SCAN_BOOTSTRAP_LENGTH);
+    usb_disconnect();
+    exit(1);
+  }
+  printf("Wrote I2C bootstrappper OK.\n");
+  /* Calculate pages. */
+  pagecount = size / PAGESIZE;
+  lastpage = size % PAGESIZE;
+  /* Send payload. */
+  for (i = 0; i < pagecount; i++) {
+    write_page(offset + (i * PAGESIZE), buf + (i * PAGESIZE), PAGESIZE);
+  }
+  if (lastpage > 0) write_page(offset + (pagecount * PAGESIZE), buf + (pagecount * PAGESIZE), lastpage);
+  printf("%d bytes (%d pages) wrote to I2C from '%s'.\n", size, pagecount, filename);
+  usb_disconnect();
 }
 
 
@@ -286,18 +372,22 @@ int main(int argc, char *argv[]) {
       break;
     case 'n':
       bytecount = atoi(optarg);
-      pagecount = bytecount / PAGESIZE;
-      lastpage = bytecount % PAGESIZE;
+      if (bytecount > MAX_ROM_SIZE) {
+	fprintf(stderr, "%d bytes is bigger than any possible attached ROM!\n", bytecount);
+	exit(1);
+      }
       break;
     case 'r':
       filename = optarg;
-      read_eeprom();
+      pagecount = bytecount / PAGESIZE;
+      lastpage = bytecount % PAGESIZE;
+      read_ram();
       exit(0);
       break;
     case 'w':
       filename = optarg;
-      printf("Not implemented yet!\n");
-      exit(1);
+      write_eeprom_long();
+      exit(0);
       break;
     case 'h':
     default:

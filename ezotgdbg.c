@@ -213,9 +213,9 @@ void usb_connect() {
   conn_res = usb_get_string_simple(devh, 1, id_buf, BUFSIZE);
   if (conn_res < 0) {
     printf("Error reading manufacturer ID!\n");
-    exit(1);
+  } else {
+    printf("Chip Manufacturer ID='%s'\n", id_buf);
   }
-  printf("Chip Manufacturer ID='%s'\n", id_buf);
 }
 
 

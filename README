@@ -11,3 +11,4 @@ To burn 'firmware.bin' into your CY7C67300:
 
 That's it.
 
+If you have something other than a CY7C67300 that you believe is compatible (say, a 67200) - change the USB and Product IDs in ezotgdbg.c to match yours.

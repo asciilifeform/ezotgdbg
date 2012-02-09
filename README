@@ -1,4 +1,13 @@
 Linux firmware tool for the Cypress EZ-OTG / EZ-Host.
 The chip found, among other places, on the Xilinx ML501.
 
-This little tool is intended to replace 'QTUI2C.EXE', which the supposedly Linux-friendly Cypress SDK shipped with.
+This little tool replaces 'QTUI2C.EXE', which the supposedly Linux-friendly Cypress SDK shipped with.
+
+Usage:
+
+To burn 'firmware.bin' into your CY7C67300:
+
+	./ezotgdbg -w firmware.bin
+
+That's it.
+

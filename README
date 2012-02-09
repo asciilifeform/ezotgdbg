@@ -3,6 +3,12 @@ The chip found, among other places, on the Xilinx ML501.
 
 This little tool replaces 'QTUI2C.EXE', which the supposedly Linux-friendly Cypress SDK shipped with.
 
+
+To Build:
+
+Simply enter 'make'. There is only one dependency: libusb 1.0.
+
+
 Usage:
 
 To burn 'firmware.bin' into your CY7C67300:
@@ -10,5 +16,6 @@ To burn 'firmware.bin' into your CY7C67300:
 	./ezotgdbg -w firmware.bin
 
 That's it.
+
 
 If you have something other than a CY7C67300 that you believe is compatible (say, a 67200) - change the USB and Product IDs in ezotgdbg.c to match yours.

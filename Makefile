@@ -6,6 +6,9 @@ all :	$(BIN)
 main : $(BIN).c
 	$(CC) $(CFLAGS) -o $(BIN) $(BIN).c
 
+install :
+	cp ezotgdbg /usr/local/bin/
+
 clean :
 	rm -f nul core *.o $(BIN) *~
 

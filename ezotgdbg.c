@@ -133,7 +133,7 @@ void save_buf(char *buffer, int length, char *file_name) {
   FILE *f;
   f = fopen(file_name, "w");
   if (f == NULL) {
-    fprintf(stderr, "Cannot open file \"%s\" for writing.\n", filename);
+    fprintf(stderr, "Cannot open file \"%s\" for writing.\n", file_name);
     exit(1);
   }
   if (fwrite(buffer, 1, length, f) != length) {

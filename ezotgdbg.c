@@ -26,9 +26,15 @@
 #include <stdio.h>
 #include <usb.h>
 
-/* Only the CY7C67300 for now, because that is what we have. */
-#define VENDOR_ID                 0x04B4
-#define PRODUCT_ID                0x7200
+struct device {
+  uint16_t vendor, product;
+} device_table[] = {
+  { .vendor = 0x04B4, .product = 0x7200 },	/* CY7C67300 */
+  { .vendor = 0x04CE, .product = 0x07D1 },	/* SL11R with empty EEPROM */
+  { .vendor = 0x04CE, .product = 0x0002 },	/* SL11R-IDE */
+};
+
+#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 
 #define PAGESIZE                    4096
 #define MAX_ROM_SIZE               65536
@@ -177,6 +183,14 @@ int load_buffer(char *buffer, char *file_name) {
 }
 
 
+int device_match(int16_t vendor, uint16_t product) {
+  for (int i = 0; i < ARRAY_SIZE(device_table); i++)
+    if (device_table[i].vendor == vendor && device_table[i].product == product)
+      return 1;
+  return 0;
+}
+
+
 /* TODO: specify bus and device ID if more than one EZ-OTG were to hang off the bus. */
 void usb_connect() {
   int conn_res;
@@ -191,8 +205,7 @@ void usb_connect() {
   while (p != NULL) {
     q = p->devices;
     while (q != NULL) {
-      if ((q->descriptor.idVendor == VENDOR_ID) &&
-          (q->descriptor.idProduct == PRODUCT_ID)) {
+      if (device_match(q->descriptor.idVendor, q->descriptor.idProduct)) {
 	current_device = q;
       }
       q = q->next;

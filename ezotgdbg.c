@@ -148,7 +148,7 @@ int load_buffer(char *buffer, char *file_name) {
   int fsize, result;
   if (file_name == NULL) {
     printf("Must specify file_name!\n");
-    error(1);
+    exit(1);
   }
   f = fopen(file_name, "r");
   if (f == NULL) {

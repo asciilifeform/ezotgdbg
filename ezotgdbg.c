@@ -347,8 +347,8 @@ void write_eeprom_short() {
     sl11r_eeprom_setup();
   size = load_buffer(buf + 8, filename); /* Reserve space for SCAN header. */
   /* pad payload by another 2 bytes (4 total, based on observations) */
-  buf[size + 1] = 0x00;
-  buf[size + 2] = 0x00;
+  buf[size + 8] = 0x00;
+  buf[size + 9] = 0x00;
   size += 2;
   /* SCAN header signature */
   buf[0] = 0xB6;

@@ -137,6 +137,7 @@ void print_usage(int argc, char *argv[]) {
   printf("      -m\tWrite contents of (small) FILE to EEPROM.\n");
   printf("      -o\tOffset in RAM to read from.\n");
   printf("      -n\tNumber of bytes (to read.)\n");
+  printf("      -x\tLoad FILE into RAM and execute (like QTULOAD).\n");
   printf("      -h\tShow this help screen.\n");
   printf("\n");
 }
@@ -381,11 +382,49 @@ void write_eeprom_short() {
 }
 
 
+void load_exec() {
+  int size, write_res;
+  usb_connect();
+  size = load_buffer(buf + 6, filename); /* Reserve space for SCAN header. */
+  /* SCAN header signature */
+  buf[0] = 0xB6;
+  buf[1] = 0xC3;
+  /* Payload size */
+  buf[2] = 0xFF & (size - 1);	/* size was incremented by 2 by load_buffer() */
+  buf[3] = (0xFF00 & (size - 1)) >> 8;
+  /* operation: alloc memory to vector & load code */
+  buf[4] = 0x02;
+  /* Destination vector */
+  buf[5] = 0x52;
+  /* Adjust byte count to fit SCAN header. */
+  size += 6;
+  /* Send payload. */
+  write_res = usb_control_msg(devh, USB_ENDPOINT_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
+			      CY_REQUEST_CODE, 0x02, 0x4d0,
+			      buf, size, TIMEOUT);
+
+  if (write_res != size) {
+    printf("Error writing to RAM: %d bytes sent out of %d bytes attempted.\n",
+	   write_res, size);
+    usb_disconnect();
+    exit(1);
+  }
+  printf("%d bytes wrote to RAM from '%s'.\n", size, filename);
+
+  char cmd[] = { 0xb6, 0xc3, 0x01, 0x00, 0x06, 0x52, 0x00, 0x00 }; /* execute vector 0x52 */
+  usb_control_msg(devh, USB_ENDPOINT_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
+                  CY_REQUEST_CODE, 0x06, 0x4d0,
+                  cmd, sizeof(cmd), TIMEOUT);
+
+  usb_disconnect();
+}
+
+
 /* TODO: implement writing. */
 int main(int argc, char *argv[]) {
   int ok;
   char c;
-  while ((c = getopt(argc, argv, "o:n:r:w:m:h|help")) != -1) {
+  while ((c = getopt(argc, argv, "o:n:r:w:m:x:h|help")) != -1) {
     switch(c) {
     case 'o':
       /* offset = atoi(optarg); */
@@ -417,6 +456,11 @@ int main(int argc, char *argv[]) {
     case 'm':
       filename = optarg;
       write_eeprom_short();
+      exit(0);
+      break;
+    case 'x':
+      filename = optarg;
+      load_exec();
       exit(0);
       break;
     case 'h':

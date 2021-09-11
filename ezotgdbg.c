@@ -227,6 +227,7 @@ void usb_connect() {
   }
   printf("Found EZ-OTG chip.\n");
   devh = usb_open(current_device);
+  usb_detach_kernel_driver_np(devh, 0);
   conn_res = usb_claim_interface(devh, 0);
   if (conn_res < 0) {
     printf("Error claiming interface!\n");

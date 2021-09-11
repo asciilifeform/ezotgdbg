@@ -51,6 +51,9 @@ struct device {
 #define CY_BOOTSTRAPPER_OFFSET    0x0001
 #define CY_SHORT_WRITE_OFFSET     0xD5F0
 
+#define CY_INT_EEPROM1              0x40
+#define CY_INT_EEPROM2              0x41
+
 #define CY_LONG_SCAN_BOOTSTRAP_LENGTH  144
 unsigned char long_scan_bootstrap[CY_LONG_SCAN_BOOTSTRAP_LENGTH] =
   {0xb6, 0xc3, 0x04, 0x00, 0x00, 0x42, 0x00, /* op=0: copy 4-2 bytes to 0x0042: 4c 03 */
@@ -306,6 +309,30 @@ void write_eeprom_long() {
 }
 
 
+void sl11r_eeprom_setup() {
+  /* 0x00A6 = USB_STANDARD_INT vector: 0xF332 = ??? */
+  char cmd1[] = { 0xb6, 0xc3, 0x04, 0x00, 0x00, 0xa6, 0x00, 0x32, 0xf3, 0x69 };
+  usb_control_msg(devh, USB_ENDPOINT_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
+                  CY_REQUEST_CODE, 0, 0xc3b6,
+                  cmd1, sizeof(cmd1), TIMEOUT);
+  /* 0x02D2 = ???: 0xE8D4 = ??? */
+  char cmd2[] = { 0xb6, 0xc3, 0x04, 0x00, 0x00, 0xd2, 0x02, 0xd4, 0xe8, 0x69 };
+  usb_control_msg(devh, USB_ENDPOINT_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
+                  CY_REQUEST_CODE, 0, 0xc3b6,
+                  cmd2, sizeof(cmd2), TIMEOUT);
+  /* 0xC00E = Interrupt Enable Register: 0x0020 = USB Interrupt enable */
+  char cmd3[] = { 0xb6, 0xc3, 0x04, 0x00, 0x00, 0x0e, 0xc0, 0x20, 0x00, 0x69 };
+  usb_control_msg(devh, USB_ENDPOINT_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
+                  CY_REQUEST_CODE, 0, 0xc3b6,
+                  cmd3, sizeof(cmd3), TIMEOUT);
+  /* 0xC006 = Configuration Register: 0x0000 = CLK X1 */
+  char cmd4[] = { 0xb6, 0xc3, 0x04, 0x00, 0x00, 0x06, 0xc0, 0x00, 0x00, 0x69 };
+  usb_control_msg(devh, USB_ENDPOINT_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
+                  CY_REQUEST_CODE, 0, 0xc3b6,
+                  cmd4, sizeof(cmd4), TIMEOUT);
+}
+
+
 void write_eeprom_short() {
   int size, write_res;
   size = load_buffer(buf + 8, filename); /* Reserve space for SCAN header. */
@@ -321,8 +348,8 @@ void write_eeprom_short() {
   buf[3] = (0xFF00 & (size + 1)) >> 8;
   /* operation: move with interrupt */
   buf[4] = 0x08;
-  /* int=0x41 */
-  buf[5] = 0x41;
+  /* int=0x40 or 0x41 */
+  buf[5] = CY_INT_EEPROM1;
   /* Destination */
   buf[6] = 0x00;
   buf[7] = 0x00;
@@ -330,6 +357,7 @@ void write_eeprom_short() {
   size += 8;
   /* Send payload. */
   usb_connect();
+  sl11r_eeprom_setup();
   write_res = usb_control_msg(devh, USB_ENDPOINT_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
 			      CY_REQUEST_CODE, CY_SHORT_WRITE_EEPROM, CY_SHORT_WRITE_OFFSET,
 			      buf, size, TIMEOUT);

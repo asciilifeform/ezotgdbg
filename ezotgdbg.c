@@ -26,12 +26,15 @@
 #include <stdio.h>
 #include <usb.h>
 
+enum device_type { CY = 1, SL11R };
+
 struct device {
   uint16_t vendor, product;
+  enum device_type type;
 } device_table[] = {
-  { .vendor = 0x04B4, .product = 0x7200 },	/* CY7C67300 */
-  { .vendor = 0x04CE, .product = 0x07D1 },	/* SL11R with empty EEPROM */
-  { .vendor = 0x04CE, .product = 0x0002 },	/* SL11R-IDE */
+  { .vendor = 0x04B4, .product = 0x7200, .type = CY },		/* CY7C67300 */
+  { .vendor = 0x04CE, .product = 0x07D1, .type = SL11R },	/* SL11R with empty EEPROM */
+  { .vendor = 0x04CE, .product = 0x0002, .type = SL11R },	/* SL11R-IDE */
 };
 
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
@@ -116,6 +119,7 @@ unsigned char long_scan_bootstrap[CY_LONG_SCAN_BOOTSTRAP_LENGTH] =
 
 
 struct usb_device *current_device;
+enum device_type current_type;
 usb_dev_handle *devh;
 char buf[BUFSIZE];
 char *filename = NULL;
@@ -186,10 +190,10 @@ int load_buffer(char *buffer, char *file_name) {
 }
 
 
-int device_match(int16_t vendor, uint16_t product) {
+enum device_type device_match(int16_t vendor, uint16_t product) {
   for (int i = 0; i < ARRAY_SIZE(device_table); i++)
     if (device_table[i].vendor == vendor && device_table[i].product == product)
-      return 1;
+      return device_table[i].type;
   return 0;
 }
 
@@ -208,8 +212,10 @@ void usb_connect() {
   while (p != NULL) {
     q = p->devices;
     while (q != NULL) {
-      if (device_match(q->descriptor.idVendor, q->descriptor.idProduct)) {
+      enum device_type type = device_match(q->descriptor.idVendor, q->descriptor.idProduct);
+      if (type) {
 	current_device = q;
+	current_type = type;
       }
       q = q->next;
     }
@@ -335,6 +341,9 @@ void sl11r_eeprom_setup() {
 
 void write_eeprom_short() {
   int size, write_res;
+  usb_connect();
+  if (current_type == SL11R)
+    sl11r_eeprom_setup();
   size = load_buffer(buf + 8, filename); /* Reserve space for SCAN header. */
   /* pad payload by another 2 bytes (4 total, based on observations) */
   buf[size + 1] = 0x00;
@@ -349,15 +358,13 @@ void write_eeprom_short() {
   /* operation: move with interrupt */
   buf[4] = 0x08;
   /* int=0x40 or 0x41 */
-  buf[5] = CY_INT_EEPROM1;
+  buf[5] = current_type == SL11R ? CY_INT_EEPROM1 : CY_INT_EEPROM2;
   /* Destination */
   buf[6] = 0x00;
   buf[7] = 0x00;
   /* Adjust byte count to fit SCAN header. */
   size += 8;
   /* Send payload. */
-  usb_connect();
-  sl11r_eeprom_setup();
   write_res = usb_control_msg(devh, USB_ENDPOINT_OUT | USB_TYPE_VENDOR | USB_RECIP_DEVICE,
 			      CY_REQUEST_CODE, CY_SHORT_WRITE_EEPROM, CY_SHORT_WRITE_OFFSET,
 			      buf, size, TIMEOUT);

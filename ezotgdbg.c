@@ -183,8 +183,8 @@ int load_buffer(char *buffer, char *file_name) {
     exit(1);
   }
   /* Pad buffer */
+  buffer[fsize] = 0x00;
   buffer[fsize + 1] = 0x00;
-  buffer[fsize + 2] = 0x00;
   fsize += 2;
   return fsize;
 }
